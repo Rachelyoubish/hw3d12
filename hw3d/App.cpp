@@ -2,7 +2,7 @@
 
 App::App()
 	:
-	wnd( 800,600,"hw3d 12" )
+	wnd( 800, 600, "hw3d 12" )
 {}
 
 int App::Go()
@@ -21,5 +21,7 @@ int App::Go()
 
 void App::DoFrame()
 {
-
+	const float c = (float)sin(timer.Peek()) / 2.0f + 0.5f;
+	wnd.Gfx().ClearBuffer(c, c, 1.0f);
+	wnd.Gfx().EndFrame();
 }
