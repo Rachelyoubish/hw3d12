@@ -17,38 +17,14 @@ public:
     Graphics& operator=(const Graphics&) = delete; // Delete assignment.
     ~Graphics();
     void EndFrame();
-    void ClearBuffer(float red, float green, float blue, float alpha = 1.0f)
-    {
-        m_Color = { red, green, blue, alpha };
-    }
+    void ClearBuffer(float red, float green, float blue, float alpha = 1.0f);
     DirectX::XMFLOAT4 m_Color;
 private:
     void PopulateCommandList();
     void WaitForPreviousFrame();
     // Function from MSDN
     // Source: https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-d3d12createdevice
-    void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter)
-    {
-        *ppAdapter = nullptr;
-        for (UINT adapterIndex = 0; ; ++adapterIndex)
-        {
-            IDXGIAdapter1* pAdapter = nullptr;
-            if (DXGI_ERROR_NOT_FOUND == pFactory->EnumAdapters1(adapterIndex, &pAdapter))
-            {
-                // No more adapters to enumerate.
-                break;
-            }
-
-            // Check to see if the adapter supports Direct3D 12, but don't create the
-            // actual device yet.
-            if (SUCCEEDED(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr)))
-            {
-                *ppAdapter = pAdapter;
-                return;
-            }
-            pAdapter->Release();
-        }
-    }
+    void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter);
 private:
     static const uint32_t FrameCount = 2;
 
