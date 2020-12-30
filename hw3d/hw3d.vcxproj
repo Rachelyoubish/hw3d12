@@ -81,6 +81,7 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <FloatingPointModel>Fast</FloatingPointModel>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>_DEBUG;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -97,6 +98,7 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <FloatingPointModel>Fast</FloatingPointModel>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>_DEBUG;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
