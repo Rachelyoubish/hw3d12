@@ -1,8 +1,12 @@
 #include "Graphics.h"
 #include <sstream>
+#include <d3dcompiler.h>
 
 #pragma comment(lib, "D3d12.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "D3DCompiler.lib")
+
+using namespace Microsoft::WRL;
 
 // graphics exception checking/throwing macros (some with dxgi infos)
 #define GFX_EXCEPT_NOINFO(hr) Graphics::HrException( __LINE__,__FILE__,(hr) )
@@ -20,7 +24,9 @@
 
 Graphics::Graphics(HWND hWnd)
     : m_FrameIndex(0),
-    m_rtvDescriptorSize(0)
+    m_rtvDescriptorSize(0),
+    m_Viewport(0.0f, 0.0f, 800, 600),
+    m_ScissorRect(0, 0, 800, 600)
 {
     // Load the rendering pipeline dependencies. 
     uint32_t dxgiFactoryFlags = 0;
@@ -115,12 +121,106 @@ Graphics::Graphics(HWND hWnd)
     GFX_THROW_INFO(m_Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_CommandAllocator)));
 
     // Load the assets.
+
+    // Create an empty root signature.
+    {
+        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+        GFX_THROW_INFO(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+        GFX_THROW_INFO(m_Device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature)));
+    }
+
+    // Create the pipeline state, which includes compiling and loading shaders.
+    {
+        ComPtr<ID3DBlob> vertexShader;
+        ComPtr<ID3DBlob> pixelShader;
+
+#if defined(_DEBUG)
+        // Enable better shader debugging with the graphics debugging tools.
+        UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+        UINT compileFlags = 0;
+#endif
+
+        GFX_THROW_INFO(D3DCompileFromFile(L"Vertex.hlsl", nullptr, nullptr, "main", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
+        GFX_THROW_INFO(D3DCompileFromFile(L"Pixel.hlsl", nullptr, nullptr, "main", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
+
+        // Define the vertex input layout.
+        D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+        {
+            { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        };
+
+        // Describe and create the graphics pipeline state object (PSO).
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+        psoDesc.pRootSignature = m_RootSignature.Get();
+        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+        psoDesc.DepthStencilState.DepthEnable = FALSE;
+        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        psoDesc.SampleDesc.Count = 1;
+        GFX_THROW_INFO(m_Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_PipelineState)));
+    }
+
     // Create the command list.
     GFX_THROW_INFO(m_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_CommandList)));
 
     // Command lists are created in the recording state, but there is nothing
     // to record yet. The main loop expects it to be closed, so close it now.
     GFX_THROW_INFO(m_CommandList->Close());
+
+    // Create the vertex buffer.
+    {
+        struct Vertex
+        {
+            float x;
+            float y;
+        };
+        // Define the geometry for a triangle.
+        Vertex triangleVertices[] =
+        {
+            { 0.0f, 0.5f},
+            { 0.5f, -0.5f},
+            { -0.5f, -0.5f},
+        };
+
+        const UINT vertexBufferSize = sizeof(triangleVertices);
+
+        // Note: using upload heaps to transfer static data like vert buffers is not 
+        // recommended. Every time the GPU needs it, the upload heap will be marshalled 
+        // over. Please read up on Default Heap usage. An upload heap is used here for 
+        // code simplicity and because there are very few verts to actually transfer.
+        GFX_THROW_INFO(m_Device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_VertexBuffer)));
+
+        // Copy the triangle data to the vertex buffer.
+        UINT8* pVertexDataBegin;
+        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        GFX_THROW_INFO(m_VertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+        memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
+        m_VertexBuffer->Unmap(0, nullptr);
+
+        // Initialize the vertex buffer view.
+        m_VertexBufferView.BufferLocation = m_VertexBuffer->GetGPUVirtualAddress();
+        m_VertexBufferView.StrideInBytes = sizeof(Vertex);
+        m_VertexBufferView.SizeInBytes = vertexBufferSize;
+    }
+
 
     // Create synchronization assets.
     {
@@ -191,13 +291,22 @@ void Graphics::PopulateCommandList()
     // re-recording.
     GFX_THROW_INFO(m_CommandList->Reset(m_CommandAllocator.Get(), m_PipelineState.Get()));
 
+    // Set necessary state.
+    m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
+    m_CommandList->RSSetViewports(1, &m_Viewport);
+    m_CommandList->RSSetScissorRects(1, &m_ScissorRect);
+
     // Indicate that the back buffer will be used as a render target.
     m_CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTargets[m_FrameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_FrameIndex, m_rtvDescriptorSize);
+    m_CommandList->OMSetRenderTargets(1, &rtvHandle, false, nullptr);
 
     // Record commands.
     m_CommandList->ClearRenderTargetView(rtvHandle, (FLOAT*)&m_Color, 0, nullptr);
+    m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_CommandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
+    m_CommandList->DrawInstanced(3, 1, 0, 0);
 
     // Indicate that the back buffer will now be used to present.
     m_CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTargets[m_FrameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
