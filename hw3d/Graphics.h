@@ -61,6 +61,7 @@ public:
 private:
     static const uint32_t FrameCount = 2;
     uint32_t triangleSize = 0;
+    uint32_t indexSize = 0;
 
 #ifndef NDEBUG
     DxgiInfoManager infoManager;
@@ -82,6 +83,8 @@ private:
     // App resources.
     Microsoft::WRL::ComPtr<ID3D12Resource> m_VertexBuffer;
     D3D12_VERTEX_BUFFER_VIEW m_VertexBufferView;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_IndexBuffer;
+    D3D12_INDEX_BUFFER_VIEW m_IndexBufferView;
 
     // Synchronization objects.
     uint32_t m_FrameIndex;
