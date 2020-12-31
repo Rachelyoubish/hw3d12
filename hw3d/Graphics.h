@@ -51,7 +51,7 @@ public:
     ~Graphics();
     void EndFrame();
     void ClearBuffer(float red, float green, float blue, float alpha = 1.0f);
-    //void DrawTestTriangle();
+    void CreateTestTriangle();
     DirectX::XMFLOAT4 m_Color;
     void PopulateCommandList();
     void WaitForPreviousFrame();
@@ -60,6 +60,7 @@ public:
     void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter);
 private:
     static const uint32_t FrameCount = 2;
+    uint32_t triangleSize = 0;
 
 #ifndef NDEBUG
     DxgiInfoManager infoManager;

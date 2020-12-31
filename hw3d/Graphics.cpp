@@ -122,6 +122,75 @@ Graphics::Graphics(HWND hWnd)
 
     // Load the assets.
 
+    // Create the command list.
+    GFX_THROW_INFO(m_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_CommandList)));
+
+    // Command lists are created in the recording state, but there is nothing
+    // to record yet. The main loop expects it to be closed, so close it now.
+    GFX_THROW_INFO(m_CommandList->Close());
+
+
+    // Create synchronization assets.
+    {
+        GFX_THROW_INFO(m_Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence)));
+        m_FenceValue = 1;
+
+        // Create an event handle to use for frame synchronization.
+        m_FenceEvent = CreateEvent(nullptr, false, false, nullptr);
+        if (m_FenceEvent == nullptr)
+        {
+            HRESULT_FROM_WIN32(GetLastError());
+        }
+    }
+}
+
+Graphics::~Graphics()
+{
+    // Ensure that the GPU is no longer referencing resources that are about to be
+    // cleaned up by the destructor.
+    WaitForPreviousFrame();
+
+    CloseHandle(m_FenceEvent);
+}
+
+void Graphics::EndFrame()
+{
+    HRESULT hr;
+
+    //CreateTestTriangle();
+
+    // Record all the commands we need to render the scene into the command list.
+    PopulateCommandList();
+
+    // Execute the command list.
+    ID3D12CommandList* ppCommandLists[] = { m_CommandList.Get() };
+    m_CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    // Present the frame.
+    if (FAILED(hr = m_SwapChain->Present(1u, 0)))
+    {
+        if (hr == DXGI_ERROR_DEVICE_REMOVED)
+        {
+            throw GFX_DEVICE_REMOVED_EXCEPT(m_Device->GetDeviceRemovedReason());
+        }
+        else
+        {
+            GFX_THROW_INFO(hr);
+        }
+    }
+
+    WaitForPreviousFrame();
+}
+
+void Graphics::ClearBuffer(float red, float green, float blue, float alpha)
+{
+    m_Color = { red, green, blue, alpha };
+}
+
+void Graphics::CreateTestTriangle()
+{
+    HRESULT hr;
+
     // Create an empty root signature.
     {
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
@@ -172,13 +241,6 @@ Graphics::Graphics(HWND hWnd)
         GFX_THROW_INFO(m_Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_PipelineState)));
     }
 
-    // Create the command list.
-    GFX_THROW_INFO(m_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_CommandList)));
-
-    // Command lists are created in the recording state, but there is nothing
-    // to record yet. The main loop expects it to be closed, so close it now.
-    GFX_THROW_INFO(m_CommandList->Close());
-
     // Create the vertex buffer.
     {
         struct Vertex
@@ -189,12 +251,13 @@ Graphics::Graphics(HWND hWnd)
         // Define the geometry for a triangle.
         Vertex triangleVertices[] =
         {
-            { 0.0f, 0.5f},
-            { 0.5f, -0.5f},
-            { -0.5f, -0.5f},
+            { 0.0f, 0.5f },
+            { 0.5f, -0.5f },
+            { -0.5f, -0.5f },
         };
 
         const UINT vertexBufferSize = sizeof(triangleVertices);
+        triangleSize = static_cast<uint32_t>(std::size(triangleVertices));
 
         // Note: using upload heaps to transfer static data like vert buffers is not 
         // recommended. Every time the GPU needs it, the upload heap will be marshalled 
@@ -220,61 +283,6 @@ Graphics::Graphics(HWND hWnd)
         m_VertexBufferView.StrideInBytes = sizeof(Vertex);
         m_VertexBufferView.SizeInBytes = vertexBufferSize;
     }
-
-
-    // Create synchronization assets.
-    {
-        GFX_THROW_INFO(m_Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence)));
-        m_FenceValue = 1;
-
-        // Create an event handle to use for frame synchronization.
-        m_FenceEvent = CreateEvent(nullptr, false, false, nullptr);
-        if (m_FenceEvent == nullptr)
-        {
-            HRESULT_FROM_WIN32(GetLastError());
-        }
-    }
-}
-
-Graphics::~Graphics()
-{
-    // Ensure that the GPU is no longer referencing resources that are about to be
-    // cleaned up by the destructor.
-    WaitForPreviousFrame();
-
-    CloseHandle(m_FenceEvent);
-}
-
-void Graphics::EndFrame()
-{
-    HRESULT hr;
-
-    // Record all the commands we need to render the scene into the command list.
-    PopulateCommandList();
-
-    // Execute the command list.
-    ID3D12CommandList* ppCommandLists[] = { m_CommandList.Get() };
-    m_CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-    // Present the frame.
-    if (FAILED(hr = m_SwapChain->Present(1u, 0)))
-    {
-        if (hr == DXGI_ERROR_DEVICE_REMOVED)
-        {
-            throw GFX_DEVICE_REMOVED_EXCEPT(m_Device->GetDeviceRemovedReason());
-        }
-        else
-        {
-            GFX_THROW_INFO(hr);
-        }
-    }
-
-    WaitForPreviousFrame();
-}
-
-void Graphics::ClearBuffer(float red, float green, float blue, float alpha)
-{
-    m_Color = { red, green, blue, alpha };
 }
 
 void Graphics::PopulateCommandList()
@@ -306,7 +314,7 @@ void Graphics::PopulateCommandList()
     m_CommandList->ClearRenderTargetView(rtvHandle, (FLOAT*)&m_Color, 0, nullptr);
     m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_CommandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
-    m_CommandList->DrawInstanced(3, 1, 0, 0);
+    m_CommandList->DrawInstanced((UINT)triangleSize, 1, 0, 0);
 
     // Indicate that the back buffer will now be used to present.
     m_CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTargets[m_FrameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
