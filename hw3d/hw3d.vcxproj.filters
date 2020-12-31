@@ -98,11 +98,11 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Vertex.hlsl">
+    <None Include="Pixel.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Pixel.hlsl">
+    </None>
+    <None Include="Vertex.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
+    </None>
   </ItemGroup>
 </Project>

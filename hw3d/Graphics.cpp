@@ -220,7 +220,8 @@ void Graphics::CreateTestTriangle()
         // Define the vertex input layout.
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         {
-            { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+            { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         // Describe and create the graphics pipeline state object (PSO).
@@ -247,13 +248,17 @@ void Graphics::CreateTestTriangle()
         {
             float x;
             float y;
+            unsigned char r;
+            unsigned char g;
+            unsigned char b;
+            unsigned char a;
         };
         // Define the geometry for a triangle.
         Vertex triangleVertices[] =
         {
-            { 0.0f, 0.5f },
-            { 0.5f, -0.5f },
-            { -0.5f, -0.5f },
+            { 0.0f, 0.5f, 255, 0, 0, 0 },
+            { 0.5f, -0.5f, 0, 255, 0, 0 },
+            { -0.5f, -0.5f, 0, 0, 255, 0 },
         };
 
         const UINT vertexBufferSize = sizeof(triangleVertices);
