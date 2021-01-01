@@ -51,7 +51,7 @@ public:
     ~Graphics();
     void EndFrame();
     void ClearBuffer(float red, float green, float blue, float alpha = 1.0f);
-    void CreateTestTriangle();
+    void CreateTestTriangle(float angle);
     DirectX::XMFLOAT4 m_Color;
     void PopulateCommandList();
     void WaitForPreviousFrame();
@@ -76,6 +76,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_CommandQueue;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_RootSignature;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_cbvHeap;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_PipelineState;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_CommandList;
     uint32_t m_rtvDescriptorSize;
@@ -85,6 +86,8 @@ private:
     D3D12_VERTEX_BUFFER_VIEW m_VertexBufferView;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_IndexBuffer;
     D3D12_INDEX_BUFFER_VIEW m_IndexBufferView;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_ConstantBuffer;
+    uint8_t* pCbvDataBegin;
 
     // Synchronization objects.
     uint32_t m_FrameIndex;

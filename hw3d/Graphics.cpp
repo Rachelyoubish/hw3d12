@@ -103,6 +103,15 @@ Graphics::Graphics(HWND hWnd)
         GFX_THROW_INFO(m_Device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
 
         m_rtvDescriptorSize = m_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+       // Describe and create a constant buffer view (CBV) descriptor heap.
+       // Flags indicate that this descriptor heap can be bound to the pipeline 
+       // and that descriptors contained in it can be referenced by a root table.
+        D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
+        cbvHeapDesc.NumDescriptors = 1;
+        cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        GFX_THROW_INFO(m_Device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap)));
     }
 
     // Create frame resources.
@@ -119,16 +128,6 @@ Graphics::Graphics(HWND hWnd)
     }
 
     GFX_THROW_INFO(m_Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_CommandAllocator)));
-
-    // Load the assets.
-
-    // Create the command list.
-    GFX_THROW_INFO(m_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_CommandList)));
-
-    // Command lists are created in the recording state, but there is nothing
-    // to record yet. The main loop expects it to be closed, so close it now.
-    GFX_THROW_INFO(m_CommandList->Close());
-
 
     // Create synchronization assets.
     {
@@ -187,18 +186,42 @@ void Graphics::ClearBuffer(float red, float green, float blue, float alpha)
     m_Color = { red, green, blue, alpha };
 }
 
-void Graphics::CreateTestTriangle()
+void Graphics::CreateTestTriangle(float angle)
 {
     HRESULT hr;
 
-    // Create an empty root signature.
+    // Create a root signature consisting of a descriptor table with a single CBV.
     {
-        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+
+        // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
+        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+        if (FAILED(m_Device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+        {
+            featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+        }
+
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+
+        // Allow input layout and deny uneccessary access to certain pipeline stages.
+        D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
-        GFX_THROW_INFO(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+        GFX_THROW_INFO(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &error));
         GFX_THROW_INFO(m_Device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature)));
     }
 
@@ -242,6 +265,13 @@ void Graphics::CreateTestTriangle()
         GFX_THROW_INFO(m_Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_PipelineState)));
     }
 
+    // Create the command list.
+    GFX_THROW_INFO(m_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_CommandList)));
+
+    // Command lists are created in the recording state, but there is nothing
+    // to record yet. The main loop expects it to be closed, so close it now.
+    GFX_THROW_INFO(m_CommandList->Close());
+
     // Create the vertex buffer.
     {
         struct Vertex
@@ -267,7 +297,7 @@ void Graphics::CreateTestTriangle()
             { -0.5f, -0.5f, 0, 0, 255, 0 },
             { -0.3f, 0.3f, 0, 255, 0, 0 },
             { 0.3f, 0.3f, 0, 0, 255, 0 },
-            { 0.0f, -0.8f, 255, 0, 0, 0 },
+            { 0.0f, -1.0f, 255, 0, 0, 0 },
         };
 
         triangleVertices[0].color.g = 255;
@@ -301,34 +331,85 @@ void Graphics::CreateTestTriangle()
     }
 
     // Create the index buffer.
-    const unsigned short indices[] =
     {
-        0, 1, 2,
-        0, 2, 3,
-        0, 4, 1,
-        2, 1, 5,
-    };
-    const UINT indexBufferSize = sizeof(indices);
-    indexSize = static_cast<uint32_t>(std::size(indices));
+        const unsigned short indices[] =
+        {
+            0, 1, 2,
+            0, 2, 3,
+            0, 4, 1,
+            2, 1, 5,
+        };
+        const UINT indexBufferSize = sizeof(indices);
+        indexSize = static_cast<uint32_t>(std::size(indices));
 
-    GFX_THROW_INFO(m_Device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&m_IndexBuffer)));
+        GFX_THROW_INFO(m_Device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_IndexBuffer)));
 
-    // Copy the triangle data to the vertex buffer.
-    UINT8* pIndexDataBegin;
-    CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
-    GFX_THROW_INFO(m_IndexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin)));
-    memcpy(pIndexDataBegin, indices, sizeof(indices));
-    m_IndexBuffer->Unmap(0, nullptr);
+        // Copy the triangle data to the vertex buffer.
+        UINT8* pIndexDataBegin;
+        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        GFX_THROW_INFO(m_IndexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin)));
+        memcpy(pIndexDataBegin, indices, sizeof(indices));
+        m_IndexBuffer->Unmap(0, nullptr);
 
-    // Initialize the vertex buffer view.
-    m_IndexBufferView.BufferLocation = m_IndexBuffer->GetGPUVirtualAddress();
-    m_IndexBufferView.Format = DXGI_FORMAT_R16_UINT;
-    m_IndexBufferView.SizeInBytes = indexBufferSize;
+        // Initialize the vertex buffer view.
+        m_IndexBufferView.BufferLocation = m_IndexBuffer->GetGPUVirtualAddress();
+        m_IndexBufferView.Format = DXGI_FORMAT_R16_UINT;
+        m_IndexBufferView.SizeInBytes = indexBufferSize;
+    }
+
+    // Create constant buffer. 
+    {
+        struct ConstantBuffer
+        {
+            struct
+            {
+                float element[4][4];
+                float padding[48]; // Constant buffer must be 256 byte aligned. 
+            } transformation;
+        };
+
+        ConstantBuffer cb =
+        {
+            {
+                std::cos(angle),  std::sin(angle), 0.0f, 0.0f,
+                -std::sin(angle), std::cos(angle), 0.0f, 0.0f,
+                0.0f,             0.0f,            1.0f, 0.0f,
+                0.0f,             0.0f,            0.0f, 1.0f,
+            }
+        };
+
+        const uint32_t cbvSize = sizeof(ConstantBuffer);
+
+        GFX_THROW_INFO(m_Device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(cbvSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, IID_PPV_ARGS(&m_ConstantBuffer)
+        ));
+
+        // Describe and create a constant buffer view.
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = m_ConstantBuffer->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = cbvSize;
+        m_Device->CreateConstantBufferView(&cbvDesc, m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+
+        // Map and initialize the constant buffer. We don't unmap this until the
+        // app closes. Keeping things mapped for the lifetime of the resource is okay.
+        CD3DX12_RANGE readRange(0, 0); // Not reading from resource on CPU
+        GFX_THROW_INFO(m_ConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCbvDataBegin)));
+        memcpy(pCbvDataBegin, &cb, sizeof(cb));
+        
+    }
+    // Wait for the command list to execute; we are reusing the same command 
+    // list in our main loop but for now, we just want to wait for setup to 
+    // complete before continuing.
+    WaitForPreviousFrame();
 }
 
 void Graphics::PopulateCommandList()
@@ -347,6 +428,11 @@ void Graphics::PopulateCommandList()
 
     // Set necessary state.
     m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
+
+    ID3D12DescriptorHeap* ppHeaps[] = { m_cbvHeap.Get() };
+    m_CommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+    m_CommandList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
     m_CommandList->RSSetViewports(1, &m_Viewport);
     m_CommandList->RSSetScissorRects(1, &m_ScissorRect);
 
