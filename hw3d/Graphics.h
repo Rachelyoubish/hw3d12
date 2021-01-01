@@ -51,7 +51,7 @@ public:
     ~Graphics();
     void EndFrame();
     void ClearBuffer(float red, float green, float blue, float alpha = 1.0f);
-    void CreateTestTriangle(float angle);
+    void CreateTestTriangle(float angle, float x, float y);
     DirectX::XMFLOAT4 m_Color;
     void PopulateCommandList();
     void WaitForPreviousFrame();

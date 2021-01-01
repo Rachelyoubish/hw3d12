@@ -7,6 +7,7 @@
 #pragma comment(lib, "D3DCompiler.lib")
 
 using namespace Microsoft::WRL;
+namespace DX = DirectX;
 
 // graphics exception checking/throwing macros (some with dxgi infos)
 #define GFX_EXCEPT_NOINFO(hr) Graphics::HrException( __LINE__,__FILE__,(hr) )
@@ -186,7 +187,7 @@ void Graphics::ClearBuffer(float red, float green, float blue, float alpha)
     m_Color = { red, green, blue, alpha };
 }
 
-void Graphics::CreateTestTriangle(float angle)
+void Graphics::CreateTestTriangle(float angle, float x, float y)
 {
     HRESULT hr;
 
@@ -366,20 +367,19 @@ void Graphics::CreateTestTriangle(float angle)
     {
         struct ConstantBuffer
         {
-            struct
-            {
-                float element[4][4];
-                float padding[48]; // Constant buffer must be 256 byte aligned. 
-            } transformation;
+            DX::XMMATRIX transform; // 64 bytes
+            float padding[48];      // 192 bytes (Constant buffer must be 256 byte aligned)
         };
-
+        static_assert((sizeof(ConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
+        
         ConstantBuffer cb =
         {
             {
-                (3.0f / 4.0f) * std::cos(angle),  std::sin(angle), 0.0f, 0.0f,
-                (3.0f / 4.0f) * -std::sin(angle), std::cos(angle), 0.0f, 0.0f,
-                0.0f,             0.0f,            1.0f, 0.0f,
-                0.0f,             0.0f,            0.0f, 1.0f,
+                DX::XMMatrixTranspose(
+                    DX::XMMatrixRotationZ(angle) *
+                    DX::XMMatrixScaling(3.0f / 4.0f, 1.0f, 1.0f) *
+                    DX::XMMatrixTranslation(x, y, 0.0f) 
+                )
             }
         };
 
