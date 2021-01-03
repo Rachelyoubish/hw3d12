@@ -109,10 +109,12 @@ Graphics::Graphics(HWND hWnd)
        // Flags indicate that this descriptor heap can be bound to the pipeline 
        // and that descriptors contained in it can be referenced by a root table.
         D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-        cbvHeapDesc.NumDescriptors = 1;
+        cbvHeapDesc.NumDescriptors = 2;
         cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         GFX_THROW_INFO(m_Device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap)));
+
+        m_cbvHeap->SetName(L"Constant Buffer View Heap");
     }
 
     // Create frame resources.
@@ -187,7 +189,7 @@ void Graphics::ClearBuffer(float red, float green, float blue, float alpha)
     m_Color = { red, green, blue, alpha };
 }
 
-void Graphics::CreateTestTriangle(float angle, float x, float y)
+void Graphics::CreateTestTriangle(float angle, float x, float z)
 {
     HRESULT hr;
 
@@ -203,19 +205,19 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
             featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
         }
 
-        CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
-        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[2]{};
+        CD3DX12_ROOT_PARAMETER1 rootParameters[1]{};
 
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
+        rootParameters[0].InitAsDescriptorTable(_countof(ranges), ranges, D3D12_SHADER_VISIBILITY_ALL);
 
         // Allow input layout and deny uneccessary access to certain pipeline stages.
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
             D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
             D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-            D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
         rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
@@ -245,7 +247,6 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         {
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         // Describe and create the graphics pipeline state object (PSO).
@@ -283,25 +284,18 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
                 float y;
                 float z;
             } pos;
-            struct
-            {
-                unsigned char r;
-                unsigned char g;
-                unsigned char b;
-                unsigned char a;
-            };
         };
         // Define the geometry for a triangle.
         Vertex triangleVertices[] =
         {
-            { -1.0f, -1.0f, -1.0f, 255, 0, 0, 0 },
-            {  1.0f, -1.0f, -1.0f, 0, 255, 0, 0 },
-            { -1.0f,  1.0f, -1.0f, 0, 0, 255, 0 },
-            {  1.0f,  1.0f, -1.0f, 255, 255, 0, 0 },
-            { -1.0f, -1.0f,  1.0f, 255, 0, 255, 0 },
-            {  1.0f, -1.0f,  1.0f, 0, 255, 255, 0 },
-            { -1.0f,  1.0f,  1.0f, 0, 0, 0, 0 },
-            {  1.0f,  1.0f,  1.0f, 255, 255, 255, 0 },
+            { -1.0f, -1.0f, -1.0f },
+            {  1.0f, -1.0f, -1.0f },
+            { -1.0f,  1.0f, -1.0f },
+            {  1.0f,  1.0f, -1.0f },
+            { -1.0f, -1.0f,  1.0f },
+            {  1.0f, -1.0f,  1.0f },
+            { -1.0f,  1.0f,  1.0f },
+            {  1.0f,  1.0f,  1.0f }
         };
 
         const UINT vertexBufferSize = sizeof(triangleVertices);
@@ -381,13 +375,40 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
                 DX::XMMatrixTranspose(
                     DX::XMMatrixRotationZ(angle) *
                     DX::XMMatrixRotationX(angle) *
-                    DX::XMMatrixTranslation(x, y, 4.0f) *
+                    DX::XMMatrixTranslation(x, 0.0f, z + 4.0f) *
                     DX::XMMatrixPerspectiveLH(1.0f, 3.0f / 4.0f, 0.5f, 10.f)
                 )
             }
         };
 
+        struct ConstantBuffer2
+        {
+            struct
+            {
+                float r;
+                float g;
+                float b;
+                float a;
+            } face_colors[6];
+            float padding[40];
+        };
+
+        ConstantBuffer2 cb2 =
+        {
+            {
+                { 1.0f,0.0f,1.0f },
+                { 1.0f,0.0f,0.0f },
+                { 0.0f,1.0f,0.0f },
+                { 0.0f,0.0f,1.0f },
+                { 1.0f,1.0f,0.0f },
+                { 0.0f,1.0f,1.0f },
+            }
+        };
+
+        static_assert((sizeof(ConstantBuffer2) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
+
         const uint32_t cbvSize = sizeof(ConstantBuffer);
+        const uint32_t cbvSize2 = sizeof(ConstantBuffer2);
 
         GFX_THROW_INFO(m_Device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -397,19 +418,38 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
             nullptr, IID_PPV_ARGS(&m_ConstantBuffer)
         ));
 
+        GFX_THROW_INFO(m_Device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(cbvSize2),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, IID_PPV_ARGS(&m_ConstantBuffer2)
+        ));
+
         // Describe and create a constant buffer view.
-        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = m_ConstantBuffer->GetGPUVirtualAddress();
-        cbvDesc.SizeInBytes = cbvSize;
-        m_Device->CreateConstantBufferView(&cbvDesc, m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc[2] = {};
+        cbvDesc[0].BufferLocation = m_ConstantBuffer->GetGPUVirtualAddress();
+        cbvDesc[0].SizeInBytes = cbvSize;
+        cbvDesc[1].BufferLocation = m_ConstantBuffer2->GetGPUVirtualAddress();
+        cbvDesc[1].SizeInBytes = cbvSize2;
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle0(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), m_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), 0);
+        m_Device->CreateConstantBufferView(&cbvDesc[0], cbvHandle0);
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle1(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), m_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), 1);
+        m_Device->CreateConstantBufferView(&cbvDesc[1], cbvHandle1);
 
         // Map and initialize the constant buffer. We don't unmap this until the
         // app closes. Keeping things mapped for the lifetime of the resource is okay.
         CD3DX12_RANGE readRange(0, 0); // Not reading from resource on CPU
         GFX_THROW_INFO(m_ConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCbvDataBegin)));
         memcpy(pCbvDataBegin, &cb, sizeof(cb));
-        
+
+        CD3DX12_RANGE readRange2(0, 0); // Not reading from resource on CPU
+        GFX_THROW_INFO(m_ConstantBuffer2->Map(0, &readRange2, reinterpret_cast<void**>(&pCbvDataBegin2)));
+        memcpy(pCbvDataBegin2, &cb2, sizeof(cb2));
     }
+
     // Wait for the command list to execute; we are reusing the same command 
     // list in our main loop but for now, we just want to wait for setup to 
     // complete before continuing.
@@ -451,7 +491,7 @@ void Graphics::PopulateCommandList()
     m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_CommandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
     m_CommandList->IASetIndexBuffer(&m_IndexBufferView);
-    m_CommandList->DrawIndexedInstanced((UINT)indexSize, 1, 0,0 , 0);
+    m_CommandList->DrawIndexedInstanced((UINT)indexSize, 1, 0, 0, 0);
 
     // Indicate that the back buffer will now be used to present.
     m_CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTargets[m_FrameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));

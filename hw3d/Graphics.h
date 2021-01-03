@@ -51,7 +51,7 @@ public:
     ~Graphics();
     void EndFrame();
     void ClearBuffer(float red, float green, float blue, float alpha = 1.0f);
-    void CreateTestTriangle(float angle, float x, float y);
+    void CreateTestTriangle(float angle, float x, float z);
     DirectX::XMFLOAT4 m_Color;
     void PopulateCommandList();
     void WaitForPreviousFrame();
@@ -87,7 +87,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_IndexBuffer;
     D3D12_INDEX_BUFFER_VIEW m_IndexBufferView;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_ConstantBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_ConstantBuffer2;
     uint8_t* pCbvDataBegin;
+    uint8_t* pCbvDataBegin2;
 
     // Synchronization objects.
     uint32_t m_FrameIndex;
