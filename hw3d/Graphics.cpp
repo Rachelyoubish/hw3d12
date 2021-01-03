@@ -207,7 +207,7 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
         CD3DX12_ROOT_PARAMETER1 rootParameters[1];
 
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
 
         // Allow input layout and deny uneccessary access to certain pipeline stages.
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
@@ -244,7 +244,7 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
         // Define the vertex input layout.
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         {
-            { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
             { "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
@@ -281,27 +281,28 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
             {
                 float x;
                 float y;
+                float z;
             } pos;
-            struct 
+            struct
             {
                 unsigned char r;
                 unsigned char g;
                 unsigned char b;
                 unsigned char a;
-            } color; 
+            };
         };
         // Define the geometry for a triangle.
         Vertex triangleVertices[] =
         {
-            { 0.0f, 0.5f, 255, 0, 0, 0 },
-            { 0.5f, -0.5f, 0, 255, 0, 0 },
-            { -0.5f, -0.5f, 0, 0, 255, 0 },
-            { -0.3f, 0.3f, 0, 255, 0, 0 },
-            { 0.3f, 0.3f, 0, 0, 255, 0 },
-            { 0.0f, -1.0f, 255, 0, 0, 0 },
+            { -1.0f, -1.0f, -1.0f, 255, 0, 0, 0 },
+            {  1.0f, -1.0f, -1.0f, 0, 255, 0, 0 },
+            { -1.0f,  1.0f, -1.0f, 0, 0, 255, 0 },
+            {  1.0f,  1.0f, -1.0f, 255, 255, 0, 0 },
+            { -1.0f, -1.0f,  1.0f, 255, 0, 255, 0 },
+            {  1.0f, -1.0f,  1.0f, 0, 255, 255, 0 },
+            { -1.0f,  1.0f,  1.0f, 0, 0, 0, 0 },
+            {  1.0f,  1.0f,  1.0f, 255, 255, 255, 0 },
         };
-
-        triangleVertices[0].color.g = 255;
 
         const UINT vertexBufferSize = sizeof(triangleVertices);
         triangleSize = static_cast<uint32_t>(std::size(triangleVertices));
@@ -335,10 +336,12 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
     {
         const unsigned short indices[] =
         {
-            0, 1, 2,
-            0, 2, 3,
-            0, 4, 1,
-            2, 1, 5,
+            0,2,1, 2,3,1,
+            1,3,5, 3,7,5,
+            2,6,3, 3,6,7,
+            4,5,7, 4,7,6,
+            0,4,2, 2,4,6,
+            0,1,4, 1,5,4
         };
         const UINT indexBufferSize = sizeof(indices);
         indexSize = static_cast<uint32_t>(std::size(indices));
@@ -377,8 +380,9 @@ void Graphics::CreateTestTriangle(float angle, float x, float y)
             {
                 DX::XMMatrixTranspose(
                     DX::XMMatrixRotationZ(angle) *
-                    DX::XMMatrixScaling(3.0f / 4.0f, 1.0f, 1.0f) *
-                    DX::XMMatrixTranslation(x, y, 0.0f) 
+                    DX::XMMatrixRotationX(angle) *
+                    DX::XMMatrixTranslation(x, y, 4.0f) *
+                    DX::XMMatrixPerspectiveLH(1.0f, 3.0f / 4.0f, 0.5f, 10.f)
                 )
             }
         };
